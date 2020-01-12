@@ -2,7 +2,6 @@ package main
 
 import (
     "fmt"
-    "log"
     "os"
     "flag"
     "path/filepath"
@@ -66,7 +65,7 @@ func main() {
   // Client for informer
   clientset, err := kubernetes.NewForConfig(config)
   if err != nil {
-      log.Panic(err.Error())
+    klog.Fatal("Create client failed", err.Error())
   }
 
   // Client for create secrets
