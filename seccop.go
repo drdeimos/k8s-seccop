@@ -8,6 +8,7 @@ import (
 
     corev1 "k8s.io/api/core/v1"
     types  "k8s.io/client-go/kubernetes/typed/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/util/runtime"
     "k8s.io/klog"
 
@@ -74,7 +75,7 @@ func onAdd(obj interface{}, clientSecret types.SecretInterface) {
     klog.V(2).Info("Get annotations of ", secretNamespace, "/", secretName)
     annotations := secret.ObjectMeta.GetAnnotations()
     if origin, ok := annotations["secret-copier/origin"]; ok {
-      klog.V(2).Info("Annotation exist. Val: ", origin,"; ok:", ok)
+      klog.V(2).Info("Annotation exist. Val: ", origin,". Skip")
     } else {
       klog.V(2).Info("Check origin passed. Step 1. ", origin)
       if origin != "clone" {
@@ -101,8 +102,19 @@ func onAdd(obj interface{}, clientSecret types.SecretInterface) {
         newSecretName := newSecret.ObjectMeta.Name
         newSecretLabels := newSecret.GetLabels()
         klog.Info("Created copy: namespace: ", newSecretNamespace, ", name: ", newSecretName, ", labels: ", newSecretLabels)
+
+        // Check secret exists
+        _, err := clientSecret.Get(newSecretName, metav1.GetOptions{})
+        if err != nil {
+          klog.V(2).Info("Secret don't exist. Check passed")
+        } else {
+          klog.V(2).Info("Secret exist: ", newSecretNamespace, "/", newSecretName, ". Skip")
+          return
+        }
+
+        // Create cloned secret
         klog.V(2).Info("Try create object: ", newSecretNamespace, "/", newSecretName)
-        _, err := clientSecret.Create(newSecret)
+        _, err = clientSecret.Create(newSecret)
         if err != nil {
           klog.Info("Err: ", err)
         } else {
