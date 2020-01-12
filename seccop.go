@@ -7,7 +7,6 @@ import (
     "path/filepath"
 
     corev1 "k8s.io/api/core/v1"
-    types  "k8s.io/client-go/kubernetes/typed/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/util/runtime"
     "k8s.io/klog"
@@ -68,9 +67,6 @@ func main() {
     klog.Fatal("Create client failed", err.Error())
   }
 
-  // Client for create secrets
-  clientSecret := clientset.CoreV1().Secrets("production")
-
   factory := informers.NewSharedInformerFactory(clientset, 0)
   informer := factory.Core().V1().Secrets().Informer()
   stopper := make(chan struct{})
@@ -78,7 +74,7 @@ func main() {
   defer runtime.HandleCrash()
   informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
       AddFunc: func(obj interface{}) {
-                onAdd(obj, clientSecret)
+                onAdd(obj, *clientset)
       },
 
   })
@@ -90,11 +86,15 @@ func main() {
   <-stopper
 }
 
-func onAdd(obj interface{}, clientSecret types.SecretInterface) {
+func onAdd(obj interface{}, clientset kubernetes.Clientset) {
   secret := obj.(*corev1.Secret)
 
   _, ok := secret.GetLabels()[COPIER_LABEL]
   if ok {
+
+    // Client for create secrets
+    clientSecret := clientset.CoreV1().Secrets("production")
+
     secretNamespace := secret.ObjectMeta.Namespace
     secretName := secret.ObjectMeta.Name
     secretLabels := secret.GetLabels()
