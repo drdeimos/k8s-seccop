@@ -15,6 +15,7 @@ go mod download
 go build seccop.go
 export KUBECONFIG=<path_to_your_kubernetes_config>
 ./seccop
+```
 
 # TODO
 
