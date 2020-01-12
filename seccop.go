@@ -42,26 +42,25 @@ func main() {
   config, err := rest.InClusterConfig()
   if err != nil {
     klog.V(2).Info("In-cluster config load failed")
-  }
-
-  // Read config out-cluster
-  if len(os.Getenv("KUBECONFIG")) < 5 {
-    if home := homedir.HomeDir(); home != "" {
-      klog.V(2).Info("Try load out-cluster config load from discovered path")
-      kubeconfig = *flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-      klog.V(2).Info("Out-cluster config loaded from discovered path: ", kubeconfig)
+    // Read config out-cluster
+    if len(os.Getenv("KUBECONFIG")) < 5 {
+      if home := homedir.HomeDir(); home != "" {
+        klog.V(2).Info("Try load out-cluster config load from discovered path")
+        kubeconfig = *flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+        klog.V(2).Info("Out-cluster config loaded from discovered path: ", kubeconfig)
+      } else {
+        klog.V(2).Info("Try load out-cluster config load from flag with path")
+        kubeconfig = *flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+        klog.V(2).Info("Out-cluster config loaded from flag with path:", kubeconfig)
+      }
     } else {
-      klog.V(2).Info("Try load out-cluster config load from flag with path")
-      kubeconfig = *flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-      klog.V(2).Info("Out-cluster config loaded from flag with path:", kubeconfig)
+      klog.V(2).Info("Out-cluster config loaded from env KUBECONFIG:", os.Getenv("KUBECONFIG"))
+      kubeconfig = os.Getenv("KUBECONFIG")
     }
-  } else {
-    klog.V(2).Info("Out-cluster config loaded from env KUBECONFIG:", os.Getenv("KUBECONFIG"))
-    kubeconfig = os.Getenv("KUBECONFIG")
-  }
-  config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-  if err != nil {
-    klog.Fatal("Cluster config load failed")
+    config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+    if err != nil {
+      klog.Fatal("Cluster config load failed")
+    }
   }
 
   // Client for informer
