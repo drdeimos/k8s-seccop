@@ -68,25 +68,53 @@ func main() {
   }
 
   factory := informers.NewSharedInformerFactory(clientset, 0)
-  informer := factory.Core().V1().Secrets().Informer()
+
+  // Informer for secrets
+  klog.V(2).Info("Create secrets informer")
+  informerSecrets := factory.Core().V1().Secrets().Informer()
   stopper := make(chan struct{})
   defer close(stopper)
   defer runtime.HandleCrash()
-  informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+
+  klog.V(2).Info("Add handler for secrets informer")
+  informerSecrets.AddEventHandler(cache.ResourceEventHandlerFuncs{
       AddFunc: func(obj interface{}) {
-                onAdd(obj, *clientset)
+                onAddSecret(obj, *clientset)
       },
 
   })
-  go informer.Run(stopper)
-  if !cache.WaitForCacheSync(stopper, informer.HasSynced) {
+
+  klog.V(2).Info("Run secrets informer")
+  go informerSecrets.Run(stopper)
+  klog.V(2).Info("Runned")
+
+  // Informer for namespaces
+  informerNamespaces := factory.Core().V1().Namespaces().Informer()
+  informerNamespaces.AddEventHandler(cache.ResourceEventHandlerFuncs{
+      AddFunc: func(obj interface{}) {
+                onAddNamespace(obj, *clientset)
+      },
+
+  })
+  klog.V(2).Info("Run namespaces informer")
+  go informerNamespaces.Run(stopper)
+  klog.V(2).Info("Runned")
+
+  // WaitForCacheSync TODO may be run this sequental is wrong
+  if !cache.WaitForCacheSync(stopper, informerSecrets.HasSynced) {
+      runtime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
+      return
+  }
+  <-stopper
+
+  if !cache.WaitForCacheSync(stopper, informerNamespaces.HasSynced) {
       runtime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
       return
   }
   <-stopper
 }
 
-func onAdd(obj interface{}, clientset kubernetes.Clientset) {
+func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
   secret := obj.(*corev1.Secret)
 
   _, ok := secret.GetLabels()[COPIER_LABEL]
@@ -98,7 +126,7 @@ func onAdd(obj interface{}, clientset kubernetes.Clientset) {
     secretNamespace := secret.ObjectMeta.Namespace
     secretName := secret.ObjectMeta.Name
     secretLabels := secret.GetLabels()
-    klog.Info("Found: namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
+    klog.Info("Found secret. Namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
     klog.V(2).Info("Get annotations of ", secretNamespace, "/", secretName)
     annotations := secret.ObjectMeta.GetAnnotations()
     if origin, ok := annotations["secret-copier/origin"]; ok {
@@ -150,4 +178,10 @@ func onAdd(obj interface{}, clientset kubernetes.Clientset) {
       }
     }
   }
+}
+
+func onAddNamespace(obj interface{}, clientset kubernetes.Clientset) {
+  namespace := obj.(*corev1.Namespace)
+
+  klog.Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
 }
