@@ -21,8 +21,8 @@ export KUBECONFIG=<path_to_your_kubernetes_config>
 
 - [x] Read in-cluster config
 - [x] Do not try overwrite already copied secret
-- [ ] Check relevance already exist secret
 - [ ] Copy secret to all namespaces (now `production` hardcoded)
-- [ ] Work queue?
+- [ ] Check relevance already exist secret
 - [ ] Fix `go get`
 - [ ] Deployment example
+- [ ] Work queue?
