@@ -43,7 +43,6 @@ func main() {
   // Client for create secrets
   clientSecret := clientset.CoreV1().Secrets("production")
 
-  // TODO: make informer watch only for default ns
   factory := informers.NewSharedInformerFactory(clientset, 0)
   informer := factory.Core().V1().Secrets().Informer()
   stopper := make(chan struct{})
