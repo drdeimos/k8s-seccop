@@ -1,1 +1,1 @@
-# k8s-rescop
+# k8s-seccop
