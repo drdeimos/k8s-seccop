@@ -22,7 +22,7 @@ import (
 )
 
 const (
-  COPIER_LABLE = "secret-copier"
+  COPIER_LABEL = "secret-copier"
 )
 
 var (
@@ -94,7 +94,7 @@ func main() {
 func onAdd(obj interface{}, clientSecret types.SecretInterface) {
   secret := obj.(*corev1.Secret)
 
-  _, ok := secret.GetLabels()[COPIER_LABLE]
+  _, ok := secret.GetLabels()[COPIER_LABEL]
   if ok {
     secretNamespace := secret.ObjectMeta.Namespace
     secretName := secret.ObjectMeta.Name
