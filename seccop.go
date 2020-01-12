@@ -5,6 +5,7 @@ import (
     "log"
     "os"
     "flag"
+    "path/filepath"
 
     corev1 "k8s.io/api/core/v1"
     types  "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -14,6 +15,8 @@ import (
 
     "k8s.io/client-go/informers"
     "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
+    "k8s.io/client-go/util/homedir"
     "k8s.io/client-go/tools/cache"
     "k8s.io/client-go/tools/clientcmd"
 )
@@ -22,17 +25,37 @@ const (
   COPIER_LABLE = "secret-copier"
 )
 
+var (
+	masterURL  string
+	kubeconfig string
+)
+
 func main() {
   klog.InitFlags(nil)
   flag.Parse()
 
   klog.Info("Secret-copier app started")
-  // TODO Read config also in-cluster
-  // Read config out-cluster
-  kubeconfig := os.Getenv("KUBECONFIG")
-  config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+
+  // Read the in-cluster config
+  klog.V(2).Info("Try load in-cluster config")
+  config, err := rest.InClusterConfig()
   if err != nil {
-      log.Panic(err.Error())
+    klog.V(2).Info("In-cluster config load failed")
+  }
+
+  // Read config out-cluster
+  if len(os.Getenv("KUBECONFIG")) < 5 {
+    if home := homedir.HomeDir(); home != "" {
+      kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+    } else {
+      kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+    }
+  } else {
+    kubeconfig = os.Getenv("KUBECONFIG")
+    config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+    if err != nil {
+      klog.Fatal("Cluster config load failed")
+    }
   }
 
   // Client for informer
