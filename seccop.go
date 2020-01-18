@@ -33,6 +33,7 @@ var (
 	hashKey    []byte
 	kubeconfig string
 	masterURL  string
+	nslist     map[string]int
 )
 
 func main() {
@@ -97,6 +98,9 @@ func main() {
 	informerNamespaces.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			onAddNamespace(obj, *clientset)
+		},
+		DeleteFunc: func(obj interface{}) {
+			onDelNamespace(obj, *clientset)
 		},
 	})
 	klog.V(2).Info("Run namespaces informer")
@@ -199,11 +203,23 @@ func onAddNamespace(obj interface{}, clientset kubernetes.Clientset) {
 	namespace := obj.(*corev1.Namespace)
 
 	klog.V(2).Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
+	nslist[namespace.ObjectMeta.Name] = 1
+	klog.V(2).Info("Map contain: ", nslist)
+}
+
+func onDelNamespace(obj interface{}, clientset kubernetes.Clientset) {
+	namespace := obj.(*corev1.Namespace)
+
+	klog.V(2).Info("Removed namespace. Name: ", namespace.ObjectMeta.Name)
+	delete(nslist, namespace.ObjectMeta.Name)
+	klog.V(2).Info("Map contain: ", nslist)
 }
 
 func appInit() {
 	klog.V(2).Info("Init")
 	hashKey, _ = randomHex(32)
+	nslist = make(map[string]int)
+
 	klog.InitFlags(nil)
 	flag.Parse()
 }
