@@ -1,28 +1,26 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/minio/highwayhash"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/klog"
-
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-
-	"bytes"
-	"crypto/rand"
-	"encoding/hex"
-	"github.com/minio/highwayhash"
-	"io"
+	"k8s.io/klog"
 )
 
 const (
@@ -177,51 +175,18 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 					}
 				} else {
 					klog.V(2).Info("Secret exist: ", newSecretNamespace, "/", newSecretName, ".")
-					// Compare data && update
-					klog.V(2).Info("Prepare..")
-					existSecretBytes := keysToByte(existSecret.Data)
-					newSecretBytes := keysToByte(newSecret.Data)
-					klog.V(2).Info("Compare..")
-
-					// Compute hash for exist
-					existHash, err := highwayhash.New(hashKey) // Seed hash instance
-					if err != nil {
-						klog.Fatal("Failed to create HighwayHash instance: ", err)
-					}
-
-					if _, err = io.Copy(existHash, bytes.NewReader(existSecretBytes)); err != nil {
-						klog.Fatal("Failed to read existSecretBytes: ", err) // add error handling
-					}
-
-					existChecksum := existHash.Sum(nil)
-					existChecksumString := hex.EncodeToString(existChecksum)
-					klog.V(2).Info("Checksum for exist secret data:", existChecksumString)
-
-					// Compute hash for new
-					newHash, err := highwayhash.New(hashKey) // Seed hash instance
-					if err != nil {
-						klog.Fatal("Failed to create HighwayHash instance: ", err)
-					}
-
-					if _, err = io.Copy(newHash, bytes.NewReader(newSecretBytes)); err != nil {
-						klog.Fatal("Failed to create HighwayHash instance: ", err)
-					}
-
-					newChecksum := newHash.Sum(nil)
-					newChecksumString := hex.EncodeToString(newChecksum)
-					klog.V(2).Info("Checksum for new secret data:", newChecksumString)
-
-					// Compare hashes
-					if existChecksumString != newChecksumString {
+					// Compare
+					if secretsDataEqual(*newSecret, *existSecret) {
+						// Nothing to do if **data** of secrets actual
+						klog.V(2).Info("Secret data already actual: ", newSecretNamespace, "/", newSecretName)
+					} else {
+						// Update secret
 						_, err = clientSecret.Update(newSecret)
 						if err != nil {
 							klog.Info("Err: ", err)
 						} else {
 							klog.Info("Updated: ", newSecretNamespace, "/", newSecretName)
 						}
-					} else {
-						// Nothing to do if **data** of secrets actual
-						klog.V(2).Info("Secret data already actual: ", newSecretNamespace, "/", newSecretName)
 					}
 					return
 				}
@@ -259,40 +224,42 @@ func keysToByte(data map[string][]uint8) []byte {
 	return b.Bytes()
 }
 
-func compareSecrets(one corev1.Secret, two corev1.Secret) bool {
+func secretsDataEqual(one corev1.Secret, two corev1.Secret) bool {
 	// Compare data && update
 	klog.V(2).Info("Prepare..")
-	existSecretBytes := keysToByte(existSecret.Data)
-	newSecretBytes := keysToByte(newSecret.Data)
+	oneBytes := keysToByte(one.Data)
+	twoBytes := keysToByte(two.Data)
 	klog.V(2).Info("Compare..")
 
-	// Compute hash for exist
-	existHash, err := highwayhash.New(hashKey) // Seed hash instance
+	// Compute hash for one
+	oneHash, err := highwayhash.New(hashKey) // Seed hash instance
 	if err != nil {
 		klog.Fatal("Failed to create HighwayHash instance: ", err)
 	}
 
-	if _, err = io.Copy(existHash, bytes.NewReader(existSecretBytes)); err != nil {
-		klog.Fatal("Failed to read existSecretBytes: ", err) // add error handling
+	if _, err = io.Copy(oneHash, bytes.NewReader(oneBytes)); err != nil {
+		klog.Fatal("Failed to read oneBytes: ", err) // add error handling
 	}
 
-	existChecksum := existHash.Sum(nil)
-	existChecksumString := hex.EncodeToString(existChecksum)
-	klog.V(2).Info("Checksum for exist secret data:", existChecksumString)
+	oneChecksum := oneHash.Sum(nil)
+	oneChecksumString := hex.EncodeToString(oneChecksum)
+	klog.V(2).Info("Checksum for one secret data:", oneChecksumString)
 
-	// Compute hash for new
-	newHash, err := highwayhash.New(hashKey) // Seed hash instance
+	// Compute hash for two
+	twoHash, err := highwayhash.New(hashKey) // Seed hash instance
 	if err != nil {
 		klog.Fatal("Failed to create HighwayHash instance: ", err)
 	}
 
-	if _, err = io.Copy(newHash, bytes.NewReader(newSecretBytes)); err != nil {
+	if _, err = io.Copy(twoHash, bytes.NewReader(twoBytes)); err != nil {
 		klog.Fatal("Failed to create HighwayHash instance: ", err)
 	}
 
-	newChecksum := newHash.Sum(nil)
-	newChecksumString := hex.EncodeToString(newChecksum)
-	klog.V(2).Info("Checksum for new secret data:", newChecksumString)
+	twoChecksum := twoHash.Sum(nil)
+	twoChecksumString := hex.EncodeToString(twoChecksum)
+	klog.V(2).Info("Checksum for two secret data:", twoChecksumString)
 
-	return false
+	res := oneChecksumString == twoChecksumString
+
+	return res
 }
