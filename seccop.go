@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/minio/highwayhash"
 	corev1 "k8s.io/api/core/v1"
@@ -33,7 +34,14 @@ var (
 	hashKey    []byte
 	kubeconfig string
 	masterURL  string
-	nslist     map[string]int
+	nslist     = struct {
+		sync.RWMutex
+		m map[string]int
+	}{m: make(map[string]int)}
+	secretlist = struct {
+		sync.RWMutex
+		m map[string]map[string]int
+	}{m: make(map[string]map[string]int)}
 )
 
 func main() {
@@ -87,6 +95,9 @@ func main() {
 		AddFunc: func(obj interface{}) {
 			onAddSecret(obj, *clientset)
 		},
+		DeleteFunc: func(obj interface{}) {
+			onDelSecret(obj, *clientset)
+		},
 	})
 
 	klog.V(2).Info("Run secrets informer")
@@ -126,6 +137,8 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 
 	_, ok := secret.GetLabels()[CopierLabel]
 	if ok {
+		// secretlist[secret.GetNamespace()][secret.GetName()] = 1
+		klog.V(2).Info("Map ns contain: ", nslist.m)
 
 		// Client for create secrets
 		clientSecret := clientset.CoreV1().Secrets("production")
@@ -203,22 +216,33 @@ func onAddNamespace(obj interface{}, clientset kubernetes.Clientset) {
 	namespace := obj.(*corev1.Namespace)
 
 	klog.V(2).Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
-	nslist[namespace.ObjectMeta.Name] = 1
-	klog.V(2).Info("Map contain: ", nslist)
+	nslist.m[namespace.ObjectMeta.Name] = 1
+	klog.V(2).Info("Map ns contain: ", nslist.m)
+}
+
+func onDelSecret(obj interface{}, clientset kubernetes.Clientset) {
+	secret := obj.(*corev1.Secret)
+
+	klog.V(2).Info("Removed secret. Name: ", secret.ObjectMeta.Name)
+	//delete(secretlist[secret.GetNamespace()], secret.ObjectMeta.Name)
+	klog.V(2).Info("Map ns contain: ", nslist.m)
 }
 
 func onDelNamespace(obj interface{}, clientset kubernetes.Clientset) {
 	namespace := obj.(*corev1.Namespace)
 
 	klog.V(2).Info("Removed namespace. Name: ", namespace.ObjectMeta.Name)
-	delete(nslist, namespace.ObjectMeta.Name)
-	klog.V(2).Info("Map contain: ", nslist)
+	nslist.RLock()
+	delete(nslist.m, namespace.ObjectMeta.Name)
+	nslist.RUnlock()
+	klog.V(2).Info("Map ns contain: ", nslist.m)
 }
 
 func appInit() {
 	klog.V(2).Info("Init")
 	hashKey, _ = randomHex(32)
-	nslist = make(map[string]int)
+	nslist.m = make(map[string]int)
+	secretlist.m = make(map[string]map[string]int)
 
 	klog.InitFlags(nil)
 	flag.Parse()
