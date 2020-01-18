@@ -134,7 +134,7 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
     secretNamespace := secret.ObjectMeta.Namespace
     secretName := secret.ObjectMeta.Name
     secretLabels := secret.GetLabels()
-    klog.Info("Found secret. Namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
+    klog.V(2).Info("Found secret. Namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
     klog.V(2).Info("Get annotations of ", secretNamespace, "/", secretName)
     annotations := secret.ObjectMeta.GetAnnotations()
     if origin, ok := annotations["secret-copier/origin"]; ok {
@@ -164,7 +164,7 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
         newSecretNamespace := newSecret.ObjectMeta.Namespace
         newSecretName := newSecret.ObjectMeta.Name
         newSecretLabels := newSecret.GetLabels()
-        klog.Info("Prepared copy: namespace: ", newSecretNamespace, ", name: ", newSecretName, ", labels: ", newSecretLabels)
+        klog.V(2).Info("Prepared copy: namespace: ", newSecretNamespace, ", name: ", newSecretName, ", labels: ", newSecretLabels)
 
         // Check secret exists
         existSecret, err := clientSecret.Get(newSecretName, metav1.GetOptions{})
@@ -180,46 +180,39 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
           }
         } else {
           klog.V(2).Info("Secret exist: ", newSecretNamespace, "/", newSecretName, ".")
-          klog.Info("Data exist secret:", existSecret.Data)
-          fmt.Printf("Data exist secret: %T\n", existSecret.Data)
-          // Compare data && update TODO
+          // Compare data && update
           klog.V(2).Info("Prepare..")
           existSecretBytes := keysToByte(existSecret.Data)
           newSecretBytes := keysToByte(newSecret.Data)
-          fmt.Printf("Bytes exist secret: %v\n", existSecretBytes)
-          fmt.Printf("Bytes new secret: %v\n", newSecretBytes)
           klog.V(2).Info("Compare..")
-          klog.V(2).Info("hashKey: ", hashKey)
 
           // Compute hash for exist
-          existHash, err := highwayhash.New(hashKey)
+          existHash, err := highwayhash.New(hashKey) // Seed hash instance
           if err != nil {
             klog.Fatal("Failed to create HighwayHash instance: ", err)
           }
 
           if _, err = io.Copy(existHash, bytes.NewReader(existSecretBytes)); err != nil {
-            fmt.Printf("Failed to read from file: %v", err) // add error handling
-            return
+            klog.Fatal("Failed to read existSecretBytes: ", err) // add error handling
           }
 
           existChecksum := existHash.Sum(nil)
           existChecksumString := hex.EncodeToString(existChecksum)
-          klog.V(2).Info("Data exist secret checksum:", existChecksumString)
+          klog.V(2).Info("Checksum for exist secret data:", existChecksumString)
 
           // Compute hash for new
-          newHash, err := highwayhash.New(hashKey)
+          newHash, err := highwayhash.New(hashKey) // Seed hash instance
           if err != nil {
             klog.Fatal("Failed to create HighwayHash instance: ", err)
           }
 
           if _, err = io.Copy(newHash, bytes.NewReader(newSecretBytes)); err != nil {
-            fmt.Printf("Failed to read from file: %v", err) // add error handling
-            return
+            klog.Fatal("Failed to create HighwayHash instance: ", err)
           }
 
           newChecksum := newHash.Sum(nil)
           newChecksumString := hex.EncodeToString(newChecksum)
-          klog.V(2).Info("Data new secret checksum:", newChecksumString)
+          klog.V(2).Info("Checksum for new secret data:", newChecksumString)
 
           if existChecksumString != newChecksumString {
             _, err = clientSecret.Update(newSecret)
@@ -229,7 +222,7 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
               klog.Info("Updated: ", newSecretNamespace, "/", newSecretName)
             }
           } else {
-            klog.Info("Secret data already actual: ", newSecretNamespace, "/", newSecretName)
+            klog.V(2).Info("Secret data already actual: ", newSecretNamespace, "/", newSecretName)
           }
           return
         }
@@ -241,7 +234,7 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 func onAddNamespace(obj interface{}, clientset kubernetes.Clientset) {
   namespace := obj.(*corev1.Namespace)
 
-  klog.Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
+  klog.V(2).Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
 }
 
 func appInit() {
