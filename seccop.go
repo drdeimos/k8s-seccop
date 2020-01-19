@@ -137,8 +137,11 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 
 	_, ok := secret.GetLabels()[CopierLabel]
 	if ok {
-		// secretlist[secret.GetNamespace()][secret.GetName()] = 1
+
+		secretListAdd(secretlist.m, secret.GetNamespace(), secret.GetName())
+
 		klog.V(2).Info("Map ns contain: ", nslist.m)
+		klog.V(2).Info("Map secret contain: ", secretlist.m)
 
 		// Client for create secrets
 		clientSecret := clientset.CoreV1().Secrets("production")
@@ -224,7 +227,7 @@ func onDelSecret(obj interface{}, clientset kubernetes.Clientset) {
 	secret := obj.(*corev1.Secret)
 
 	klog.V(2).Info("Removed secret. Name: ", secret.ObjectMeta.Name)
-	//delete(secretlist[secret.GetNamespace()], secret.ObjectMeta.Name)
+	secretListDel(secretlist.m, secret.GetNamespace(), secret.GetName())
 	klog.V(2).Info("Map ns contain: ", nslist.m)
 }
 
@@ -302,4 +305,22 @@ func secretsDataEqual(one corev1.Secret, two corev1.Secret) bool {
 	res := oneChecksumString == twoChecksumString
 
 	return res
+}
+
+func secretListAdd(m map[string]map[string]int, ns, name string) {
+	klog.V(2).Info("Add element: ", ns, "[", name, "] in secretlist")
+	mm, ok := m[ns]
+	if !ok {
+		mm = make(map[string]int)
+		m[ns] = mm
+	}
+	mm[name] = 1
+}
+
+func secretListDel(m map[string]map[string]int, ns, name string) {
+	klog.V(2).Info("Del element: ", ns, "[", name, "] in secretlist")
+	delete(m[ns], name)
+	if len(m[ns]) == 0 {
+		delete(m, ns)
+	}
 }
