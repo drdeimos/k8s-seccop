@@ -143,74 +143,10 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 		klog.V(2).Info("Map ns contain: ", nslist.m)
 		klog.V(2).Info("Map secret contain: ", secretlist.m)
 
-		// Client for create secrets
-		clientSecret := clientset.CoreV1().Secrets("production")
-
-		secretNamespace := secret.ObjectMeta.Namespace
-		secretName := secret.ObjectMeta.Name
-		secretLabels := secret.GetLabels()
-		klog.V(2).Info("Found secret. Namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
-		klog.V(2).Info("Get annotations of ", secretNamespace, "/", secretName)
-		annotations := secret.ObjectMeta.GetAnnotations()
-		if origin, ok := annotations["secret-copier/origin"]; ok {
-			klog.V(2).Info("Annotation exist. Val: ", origin, ". Skip")
-		} else {
-			klog.V(2).Info("Check origin passed. Step 1. ", origin)
-			if origin != "clone" {
-				klog.V(2).Info("Check origin passed. Step 2. ", origin)
-				klog.Info("Read: namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
-
-				newSecret := secret.DeepCopy()
-				newSecret.ObjectMeta.Namespace = "production"
-
-				// Clean fields
-				newSecret.ObjectMeta.SetResourceVersion("")
-				newSecret.ObjectMeta.SetSelfLink("")
-				newSecret.ObjectMeta.SetUID("")
-				newAnnotations := secret.ObjectMeta.GetAnnotations()
-				delete(newAnnotations, "kubectl.kubernetes.io/last-applied-configuration")
-				//newSecret.ObjectMeta.SetCreationTimestamp(nil)
-				// End
-
-				// Add annotation about copy
-				newAnnotations["secret-copier/origin"] = "clone"
-				newSecret.ObjectMeta.SetAnnotations(newAnnotations)
-
-				newSecretNamespace := newSecret.ObjectMeta.Namespace
-				newSecretName := newSecret.ObjectMeta.Name
-				newSecretLabels := newSecret.GetLabels()
-				klog.V(2).Info("Prepared copy: namespace: ", newSecretNamespace, ", name: ", newSecretName, ", labels: ", newSecretLabels)
-
-				// Check secret exists
-				existSecret, err := clientSecret.Get(newSecretName, metav1.GetOptions{})
-				if err != nil {
-					klog.V(2).Info("Secret don't exist. Check passed")
-					// Create cloned secret
-					klog.V(2).Info("Try create object: ", newSecretNamespace, "/", newSecretName)
-					_, err = clientSecret.Create(newSecret)
-					if err != nil {
-						klog.Info("Err: ", err)
-					} else {
-						klog.Info("Created: ", newSecretNamespace, "/", newSecretName)
-					}
-				} else {
-					klog.V(2).Info("Secret exist: ", newSecretNamespace, "/", newSecretName, ".")
-					// Compare
-					if secretsDataEqual(*newSecret, *existSecret) {
-						// Nothing to do if **data** of secrets actual
-						klog.V(2).Info("Secret data already actual: ", newSecretNamespace, "/", newSecretName)
-					} else {
-						// Update secret
-						_, err = clientSecret.Update(newSecret)
-						if err != nil {
-							klog.Info("Err: ", err)
-						} else {
-							klog.Info("Updated: ", newSecretNamespace, "/", newSecretName)
-						}
-					}
-					return
-				}
-			}
+		//FIXME
+		for namespace := range nslist.m {
+			klog.V(2).Info("Run secretCopy() for: ", namespace)
+			secretCopy(obj, clientset, namespace)
 		}
 	}
 }
@@ -218,9 +154,9 @@ func onAddSecret(obj interface{}, clientset kubernetes.Clientset) {
 func onAddNamespace(obj interface{}, clientset kubernetes.Clientset) {
 	namespace := obj.(*corev1.Namespace)
 
-	klog.V(2).Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
+	klog.V(3).Info("Found namespace. Name: ", namespace.ObjectMeta.Name)
 	nslist.m[namespace.ObjectMeta.Name] = 1
-	klog.V(2).Info("Map ns contain: ", nslist.m)
+	klog.V(3).Info("Map ns contain: ", nslist.m)
 }
 
 func onDelSecret(obj interface{}, clientset kubernetes.Clientset) {
@@ -322,5 +258,77 @@ func secretListDel(m map[string]map[string]int, ns, name string) {
 	delete(m[ns], name)
 	if len(m[ns]) == 0 {
 		delete(m, ns)
+	}
+}
+
+func secretCopy(obj interface{}, clientset kubernetes.Clientset, targetNamespace string) {
+	//FIXME
+	// Client for create secrets
+	clientSecret := clientset.CoreV1().Secrets(targetNamespace)
+	secret := obj.(*corev1.Secret)
+	secretNamespace := secret.ObjectMeta.Namespace
+	secretName := secret.ObjectMeta.Name
+	secretLabels := secret.GetLabels()
+	klog.V(2).Info("Work with secret: ", secretNamespace, "/", secretName, ", labels: ", secretLabels)
+	klog.V(2).Info("Get annotations of ", secretNamespace, "/", secretName, ":", secret.ObjectMeta.GetAnnotations())
+	annotations := secret.ObjectMeta.GetAnnotations()
+	if origin, ok := annotations["secret-copier/origin"]; ok { //FIXME partial condition?
+		klog.V(2).Info("Annotation exist. Val: ", origin, ". Skip")
+	} else {
+		klog.V(2).Info("Check origin passed. Step 1. ", origin)
+		if origin != "clone" {
+			klog.V(2).Info("Check origin passed. Step 2. ", origin)
+			klog.Info("Read: namespace: ", secretNamespace, ", name: ", secretName, ", labels: ", secretLabels)
+
+			newSecret := secret.DeepCopy()
+			newSecret.ObjectMeta.Namespace = targetNamespace
+
+			// Clean fields
+			newSecret.ObjectMeta.SetResourceVersion("")
+			newSecret.ObjectMeta.SetSelfLink("")
+			newSecret.ObjectMeta.SetUID("")
+			newAnnotations := secret.ObjectMeta.GetAnnotations()
+			delete(newAnnotations, "kubectl.kubernetes.io/last-applied-configuration")
+			//newSecret.ObjectMeta.SetCreationTimestamp(nil)
+			// End
+
+			// Add annotation about copy
+			newAnnotations["secret-copier/origin"] = "clone"
+			newSecret.ObjectMeta.SetAnnotations(newAnnotations)
+
+			newSecretName := newSecret.ObjectMeta.Name
+			newSecretLabels := newSecret.GetLabels()
+			klog.V(2).Info("Prepared copy: namespace: ", targetNamespace, ", name: ", newSecretName, ", labels: ", newSecretLabels)
+
+			// Check secret exists
+			existSecret, err := clientSecret.Get(newSecretName, metav1.GetOptions{})
+			if err != nil {
+				klog.V(2).Info("Secret don't exist. Check passed")
+				// Create cloned secret
+				klog.V(2).Info("Try create object: ", targetNamespace, "/", newSecretName)
+				_, err = clientSecret.Create(newSecret)
+				if err != nil {
+					klog.Info("Err: ", err)
+				} else {
+					klog.Info("Created: ", targetNamespace, "/", newSecretName)
+				}
+			} else {
+				klog.V(2).Info("Secret exist: ", targetNamespace, "/", newSecretName, ".")
+				// Compare
+				if secretsDataEqual(*newSecret, *existSecret) {
+					// Nothing to do if **data** of secrets actual
+					klog.V(2).Info("Secret data already actual: ", targetNamespace, "/", newSecretName)
+				} else {
+					// Update secret
+					_, err = clientSecret.Update(newSecret)
+					if err != nil {
+						klog.Info("Err: ", err)
+					} else {
+						klog.Info("Updated: ", targetNamespace, "/", newSecretName)
+					}
+				}
+				return
+			}
+		}
 	}
 }
