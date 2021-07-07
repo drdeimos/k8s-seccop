@@ -3,6 +3,7 @@ module github.com/drdeimos/k8s-seccop
 go 1.13
 
 require (
+	github.com/minio/highwayhash v1.0.0
 	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.0
 	k8s.io/client-go v0.17.0
